@@ -19,9 +19,13 @@ EDS_FILE = "Electrak_HD-20200113.eds"
 CAN_INTERFACE = "can0"  # Change if your interface is different (e.g., 'usb0', 'pcan0', etc.)
 SCAN_TIMEOUT = 5  # seconds
 
+MAX_CURRENT_LIMIT_A = 20.0  # 20 Amps
+MIN_TARGET_POSITION_MM = 0.0
+MAX_TARGET_POSITION_MM = 360.0
+
 def connect_can_network():
     network = canopen.Network()
-    network.connect(bustype='socketcan', channel=CAN_INTERFACE, bitrate=250000)
+    network.connect(bustype='socketcan', channel=CAN_INTERFACE, bitrate=500000)
     logger.info("Connected to CAN network on interface %s", CAN_INTERFACE)
     return network
 
@@ -45,29 +49,63 @@ def set_operational(network, nodes):
     for node in nodes.values():
         node.nmt.state = 'OPERATIONAL'
         logger.info("Node %d set to OPERATIONAL", node.id)
+        time.sleep(0.1)
+
+def move_actuator(node, target_position_mm, current_limit_a=12.5, target_speed_pct=80.0, movement_profile=0, enable_motion=True):
+    """
+    Send a control command to the actuator using RPDO1.
+    All values are converted to the correct resolution as per documentation.
+    Enforces max current and position limits.
+    """
+    try:
+        # Clamp values to allowed ranges
+        target_position_mm = max(MIN_TARGET_POSITION_MM, min(MAX_TARGET_POSITION_MM, target_position_mm))
+        current_limit_a = min(current_limit_a, MAX_CURRENT_LIMIT_A)
+
+        # Convert to 0.1 units as per documentation
+        target_position = int(target_position_mm * 10)  # mm to 0.1mm
+        current_limit = int(current_limit_a * 10)       # A to 0.1A
+        target_speed = int(target_speed_pct * 10)       # % to 0.1%
+        control_bits = 0x01 if enable_motion else 0x00
+
+        # Use canopen OD names from EDS
+        node.rpdo[1]['Target Position'].raw = target_position
+        node.rpdo[1]['Current Limit'].raw = current_limit
+        node.rpdo[1]['Target Speed'].raw = target_speed
+        node.rpdo[1]['Movement Profile'].raw = movement_profile
+        node.rpdo[1]['Control Bits'].raw = control_bits
+        node.rpdo[1].transmit()
+        logger.info(
+            "Node %d: Move command sent: pos=%.1fmm, curr=%.1fA, speed=%.1f%%, profile=%d, enable=%d",
+            node.id, target_position_mm, current_limit_a, target_speed_pct, movement_profile, enable_motion
+        )
+    except Exception as e:
+        logger.error("Error sending move command to node %d: %s", node.id, e)
 
 def read_actuator_feedback(node):
-    # Example: Read position and current feedback (update indexes/subindexes as per EDS)
+    """
+    Read feedback from the actuator using TPDO1.
+    Returns (position_mm, current_a, speed_pct, motion_flags, error_flags)
+    """
     try:
-        position = node.sdo['Position feedback'].raw
-        current = node.sdo['Current feedback'].raw
-        logger.info("Node %d: Position=%s mm, Current=%s mA", node.id, position, current)
-        return position, current
+        node.tpdo[1].wait_for_reception(timeout=1.0)
+        position = node.tpdo[1]['Measured Position'].raw / 10.0
+        current = node.tpdo[1]['Measured Current'].raw / 10.0
+        speed = node.tpdo[1]['Measured Speed'].raw / 10.0
+        motion_flags = node.tpdo[1]['Motion Flags'].raw
+        error_flags = node.tpdo[1]['Error Flags'].raw
+        logger.info(
+            "Node %d: Feedback: pos=%.1fmm, curr=%.1fA, speed=%.1f%%, motion=0x%02X, error=0x%02X",
+            node.id, position, current, speed, motion_flags, error_flags
+        )
+        return position, current, speed, motion_flags, error_flags
     except Exception as e:
         logger.error("Error reading feedback from node %d: %s", node.id, e)
-        return None, None
+        return None, None, None, None, None
 
 def log_all_feedback(nodes):
     for node in nodes.values():
         read_actuator_feedback(node)
-
-def move_actuator(node, target_position):
-    # Example: Write target position (update index/subindex as per EDS)
-    try:
-        node.sdo['Target position'].raw = target_position
-        logger.info("Node %d: Move command sent to position %s mm", node.id, target_position)
-    except Exception as e:
-        logger.error("Error sending move command to node %d: %s", node.id, e)
 
 def periodic_move(nodes, positions, interval=1.0):
     logger.info("Starting periodic move commands...")
