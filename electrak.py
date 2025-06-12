@@ -8,6 +8,13 @@ from canopen import Network, Node
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("electrak")
 
+# File handler for logging to a file
+file_handler = logging.FileHandler("electrak.log")
+file_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 EDS_FILE = "Electrak_HD-20200113.eds"
 CAN_INTERFACE = "can0"  # Change if your interface is different (e.g., 'usb0', 'pcan0', etc.)
 SCAN_TIMEOUT = 5  # seconds
