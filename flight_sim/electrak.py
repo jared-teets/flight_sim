@@ -1,8 +1,7 @@
-import can
 import canopen
 import logging
 import time
-from canopen import Network, Node
+from canopen import Node
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
