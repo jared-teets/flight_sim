@@ -1,10 +1,115 @@
+# Copilot Instructions
+
+This document provides comprehensive guidelines for generating code using GitHub Copilot in our project. The instructions combine best practices with our specific requirements and default tech stack.
+
+## Objectives
+    - Generate clear, maintainable, and testing-friendly code.
+    - Ensure the code includes thorough documentation and data type declarations.
+    - Encourage the use of primary logging for printing events.
+    - Produce comprehensive tests with new classes.
+
+### Documentation and Comments
+- Every class and method must have comments explaining their purpose and functionality.
+- Example:
+  ```python
+  # A class representing a data processor.
+  class DataProcessor:
+      # Initializes the DataProcessor with initial configuration.
+      def __init__(self, config: dict) -> None:
+          """
+          Initialize with configuration settings.
+          
+          :param config: Dictionary containing configuration parameters.
+          """
+          self.config = config
+  ```
+
+### Data Type Declarations
+- Methods and functions must declare the data types for both parameters and return values.
+- Example:
+  ```python
+  def add_numbers(a: int, b: int) -> int:
+      """
+      Adds two integers and returns the sum.
+      
+      :param a: First integer.
+      :param b: Second integer.
+      :return: The sum of a and b.
+      """
+      return a + b
+  ```
+
+### Testing Friendly Code
+- Code should be written in a manner that facilitates unit testing.
+- Separate business logic from UI and external dependencies.
+- Use dependency injection where possible to make testing easier.
+
+### Test Creation with New Classes
+- Create separate test classes for new code. These tests should cover different scenarios and edge cases.
+- Place tests in designated test files or directories.
+- Example (using Python's unittest):
+  ```python
+  import unittest
+  from my_module import DataProcessor
+
+  class TestDataProcessor(unittest.TestCase):
+      def test_initialization(self):
+          config = {"key": "value"}
+          processor = DataProcessor(config)
+          self.assertEqual(processor.config, config)
+
+  if __name__ == '__main__':
+      unittest.main()
+  ```
+
+### Primary Logging for Printing Events
+- Use the primary logging mechanism for printing events instead of using print statements directly.
+- Example:
+  ```python
+  import logging
+
+  # Configure primary logger
+  logging.basicConfig(level=logging.INFO)
+  logger = logging.getLogger(__name__)
+  ```
+
+### Data Structure Conventions
+- Example:
+  ```python
+  @dataclass(slot=True)
+  class ProfitMetrics:
+      __slots__ = (xxxx)
+
+      __init__(self, profit: float, loss: float) -> None:
+          """
+          Initialize profit metrics.
+          
+          :param profit: Total profit amount.
+          :param loss: Total loss amount.
+          """
+          self.profit = profit
+          self.loss = loss
+
+          # Implementation follows...
+
+
+      async def store_profit_data(self, profit_data: dict) -> None:
+          """
+          Store profit data in Redis.
+          
+          Uses hash map for current stats and sorted set for historical data.
+          All keys have 30-day TTL.
+          
+          :param profit_data: Dictionary containing profit metrics
+          """
+          # Implementation follows...
+  ```
 # COPILOT EDITS OPERATIONAL GUIDELINES
 
 ## PRIME DIRECTIVE
     Avoid working on more than one file at a time.
     Multiple simultaneous edits to a file will cause corruption.
     Be chatting and teach about what you are doing while coding.
-
 ## LARGE FILE & COMPLEX CHANGE PROTOCOL
 
 ### MANDATORY PLANNING PHASE
@@ -26,7 +131,6 @@
     Follow this structured directory layout:
 
         project-root/
-        ├── api/                  # API handlers and routes
         ├── config/               # Configuration files and environment variables
         ├── data/                 # Databases, JSON files, and other storage
         ├── project-name/         # Application source code
@@ -39,3 +143,7 @@
         ├── logs/                 # Server and application logs
         ├── scripts/              # Scripts for deployment, setup, etc.
         └── temp/                 # Temporary/cache files
+
+## Documentation Requirements
+    - Document complex functions with clear examples.
+    - Maintain concise Markdown documentation.
