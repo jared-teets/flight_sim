@@ -43,7 +43,7 @@ This document outlines the guidelines and best practices for reviewing code gene
 - [ ] Are comments provided for critical sections of the code?
 
 ### Tech Stack Compliance
-- [ ] Does the code align with the project's default tech stack (e.g., Python, unittest, pytest)?
+- [ ] Does the code align with the project's default tech stack (e.g., Python, canopen, unittest, pytest)?
 - [ ] Are new dependencies added to `requirements.txt` if applicable?
 
 ---
