@@ -1,91 +1,69 @@
-from Get_data import Get_data
+# Example integration of geometry.py, position.py, and washout.py
+
 from geometry import Geometry
 from Position import Position
 from Washout import Washout
+from Get_data import Get_data
+import electrak
+import logging
 import time
-import matplotlib.pyplot as plt
 
-class MainClass:
-    def __init__(self):
-        self.data_getter = Get_data()
-        self.platform_geometry = Geometry(radius_base=0.791, radius_platform=0.7835, mid_length=0.74343 #min_length+(range_val/2),
-        min_length=0.59706, range_val=0.292, sep_angle=2.094, sep_angle_platform=1.753)
-        self.position = Position(self.platform_geometry.mid_length)
-        self.washout = Washout()
-        self.arrays = []
-      
+# Configure logging for this script
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main")
 
-    def start(self):
-        self.platform_geometry.init_geometry()
-        start_time = time.time()
-        flag = 0
-        # self.data_getter.initialize_values()
-        while True:
-            self.data_getter.run() # This calls the getDREFs method from init.py
-            if self.data_getter.paused == 0:
-                T = self.washout.compute2(self.data_getter.faa, self.data_getter.oaa, self.position)
-                #print("T:", T)
-                # print(type(T[0]))
-                self.position.give_positions(self.data_getter.oaa, T)
-                lengths = self.platform_geometry.inverse_kinematics(self.position)
-                self.arrays.append(lengths) # appears that lengths will be converted to can bus
-                print("Lengths:", lengths)
-                
-            end_time = time.time()
-            print("Time:", end_time)
-            # if (end_time - start_time) > 10 and flag == 0:
-            #    self.plot_graph()
-            #    flag = 1
-           
-            # self.position.display_positions()
-            # print("Lengths:", lengths)
-            # self.data_getter.print_vals()
-            time.sleep(1)  # Wait for 1 second before the next call
-    
-    def plot_graph(self):
-        print("-------------------Plotting--------------")
-        x_min = min(min(array) for array in self.arrays)
-        x_max = max(max(array) for array in self.arrays)
-        y_min = min(min(array) for array in self.arrays)
-        y_max = max(max(array) for array in self.arrays)
-        transposed_arrays = list(zip(*self.arrays))
+# 1. Initialize system
+geometry = Geometry(
+    radius_base=0.791,
+    radius_platform=0.7835,
+    mid_length=0.74343,
+    min_length=0.59706,
+    range_val=0.292,
+    sep_angle=2.094,
+    sep_angle_platform=1.753,
+)
+position = Position(mid_height=geometry.mid_height)
+washout = Washout()
+data_getter = Get_data()
 
+# Initialize CAN network and actuators
+network = electrak.connect_can_network()
+try:
+    node_ids = electrak.scan_devices(network)
+    if not node_ids:
+        logger.error("No CANopen nodes found. Exiting.")
+        exit(1)
+    nodes = electrak.add_nodes(network, node_ids)
+    electrak.set_operational(network, nodes)
 
-"""
-# Plotting
-        plt.figure(figsize=(20, 10))  # Adjust the figure size if needed
-        # for i, array in enumerate(transposed_arrays):
-        #     plt.plot(array, label=f'Array {i+1}')
+    # Main loop
+    while True:
+        # Get current acceleration and orientation (from Get_data.py)
+        data_getter.run()
+        faa = data_getter.faa  # [side, axial, normal]
+        oaa = data_getter.oaa  # [phi, psi, theta]
 
-        for i, values in enumerate(transposed_arrays):
-            plt.plot([i] * len(values), values, 'o', label=f'Index {i+1}')
+        # Washout filter: process motion cues
+        filtered_motion = washout.compute2(faa, oaa, position)
 
-# Plot lines
-        for i in range(len(transposed_arrays) - 1):
-            plt.plot([i, i + 1], [transposed_arrays[i][-1], transposed_arrays[i+1][0]], 'k--')
+        # Update platform pose
+        position.give_positions(oaa, filtered_motion)
 
-# Set axis limits
-        plt.xlim(x_min, x_max)
-        plt.ylim(y_min, y_max)
+        # Compute actuator lengths
+        actuator_lengths = geometry.inverse_kinematics(position)
 
-        plt.xlabel('Index')
-        plt.ylabel('Value')
-        plt.title('Line Graphs of Arrays')
-        plt.legend()
-        plt.grid(True)
-        plt.savefig('graph.png')
-        plt.show()
-"""
+        # Send actuator lengths to each actuator over CAN and log the messages
+        for idx, (node_id, node) in enumerate(nodes.items()):
+            # Convert length from meters to mm for actuator command
+            target_position_mm = actuator_lengths[idx] * 1000.0
+            electrak.move_actuator(node, target_position_mm)
+            logger.info(
+                f"Sent actuator command to node {node_id}: target_position_mm={target_position_mm:.2f}"
+            )
 
+        # Wait for next cycle
+        time.sleep(0.05)  # 20 Hz update rate
 
-if __name__ == '__main__':
-    main_instance = MainClass()
-    main_instance.start()
-
-#     Base mount point dia: 1.582 m
-# Upper mounting point dia: 1.567 m 
-# Base separation angle: 2.094 rad
-# Platform separation angle: 1.753 rad
-# Actuator range: 0.35 m (0.292 m active) Why is active length less than range? safety margin?
-# Actuator mid: 0.14637 m
-# Min length actuator: 0.54 m ( 0.59706 m active)
+finally:
+    network.disconnect()
+    logger.info("Disconnected from CAN network.")
