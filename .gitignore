@@ -1,3 +1,4 @@
 electrak.log
 __pycache__/electrak.cpython-312.pyc
 __pycache__/test_electrak.cpython-312-pytest-8.4.0.pyc
+.venv/
