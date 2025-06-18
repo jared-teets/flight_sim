@@ -1,5 +1,6 @@
 import canopen
 import logging
+import canalystii
 import time
 from canopen import Node
 import os
@@ -16,69 +17,16 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Path to the EDS file for the Electrak HD actuator
-EDS_FILE = os.path.join(os.path.dirname(__file__), "Electrak_HD-20200113.eds")
-CAN_INTERFACE = "can0"  # Change if your interface is different (e.g., 'usb0', 'pcan0', etc.)
-SCAN_TIMEOUT = 5  # seconds
+current_dir = os.getcwd()
+EDS_FILE = os.path.join(current_dir, 'config/Electrak_HD-20200113.eds')
+CAN_INTERFACE = 'canalystii'  # Change if your interface is different (e.g., 'usb0', 'pcan0', etc.)
+CHANNEL = '0'
+BITRATE = 500000 #500 baud
+SCAN_TIMEOUT = 0.05  # seconds
 
 MAX_CURRENT_LIMIT_A = 20.0  # 20 Amps
 MIN_TARGET_POSITION_MM = 0.0
 MAX_TARGET_POSITION_MM = 360.0
-
-
-def connect_can_network() -> canopen.Network:
-    """
-    Connect to the CANopen network using the specified CAN interface.
-
-    :return: Connected canopen.Network object.
-    """
-    network = canopen.Network()
-    network.connect(bustype="socketcan", channel=CAN_INTERFACE, bitrate=500000)
-    logger.info("Connected to CAN network on interface %s", CAN_INTERFACE)
-    return network
-
-
-def scan_devices(network: canopen.Network) -> list:
-    """
-    Scan for CANopen devices on the network.
-
-    :param network: The canopen.Network instance.
-    :return: List of discovered node IDs.
-    """
-    logger.info("Scanning for CANopen devices...")
-    found_nodes = network.scanner.search(timeout=SCAN_TIMEOUT)
-    logger.info("Found nodes: %s", found_nodes)
-    return found_nodes
-
-
-def add_nodes(network: canopen.Network, node_ids: list) -> dict:
-    """
-    Add nodes to the CANopen network.
-
-    :param network: The canopen.Network instance.
-    :param node_ids: List of node IDs to add.
-    :return: Dictionary mapping node IDs to canopen.Node objects.
-    """
-    nodes = {}
-    for node_id in node_ids:
-        node = Node(node_id, EDS_FILE)
-        network.add_node(node)
-        nodes[node_id] = node
-        logger.info("Added node %d with EDS %s", node_id, EDS_FILE)
-    return nodes
-
-
-def set_operational(network: canopen.Network, nodes: dict) -> None:
-    """
-    Set all nodes to the OPERATIONAL NMT state.
-
-    :param network: The canopen.Network instance.
-    :param nodes: Dictionary of node_id to canopen.Node.
-    """
-    logger.info("Setting all nodes to operational state...")
-    for node in nodes.values():
-        node.nmt.state = "OPERATIONAL"
-        logger.info("Node %d set to OPERATIONAL", node.id)
-        time.sleep(0.1)  # Allow time for state change
 
 
 def move_actuator(
@@ -151,7 +99,7 @@ def read_actuator_feedback(node: canopen.Node) -> tuple:
         error_flags = node.tpdo[1]["Error Flags"].raw
         logger.info(
             "Node %d: Feedback: pos=%.1fmm, curr=%.1fA, speed=%.1f%%, motion=0x%02X, error=0x%02X",
-            node.id,
+            node,
             position,
             current,
             speed,
@@ -160,7 +108,7 @@ def read_actuator_feedback(node: canopen.Node) -> tuple:
         )
         return position, current, speed, motion_flags, error_flags
     except Exception as e:
-        logger.error("Error reading feedback from node %d: %s", node.id, e)
+        logger.error("Error reading feedback from node %d: %s", node, e)
         return None, None, None, None, None
 
 
@@ -170,7 +118,7 @@ def log_all_feedback(nodes: dict) -> None:
 
     :param nodes: Dictionary of node_id to canopen.Node.
     """
-    for node in nodes.values():
+    for node in nodes:
         read_actuator_feedback(node)
 
 
@@ -194,21 +142,27 @@ def main() -> None:
     """
     Main entry point for actuator control and feedback logging.
     """
-    network = connect_can_network()
-    try:
-        found_nodes = scan_devices(network)
-        if not found_nodes:
-            logger.warning("No nodes found on the network.")
-            return
+    network = canopen.Network()
+    network.connect(interface=CAN_INTERFACE, channel=CHANNEL, bitrate=BITRATE)
+    network.scanner.search()
+    time.sleep(SCAN_TIMEOUT)
+    nodes = network.scanner.nodes
+    for node_id in nodes:
+        print(f"Found nodes {node_id}!")
+        node = network.add_node(node_id, EDS_FILE)
+        network_node = network.values()
+        print(f"Added nodes {network_node}!")
+    # Send NMT start to all nodes
+    network.nmt.state = 'OPERATIONAL'
+    time.sleep(0.1) #wake up
+    print("Network operational")
+    
+    log_all_feedback(nodes)
+    
+    network.disconnect()
 
-        nodes = add_nodes(network, found_nodes)
-        set_operational(network, nodes)
-
-        # Example: Log feedback once
-        log_all_feedback(nodes)
-
-        # Example: Move all actuators to 100mm, then 200mm, then 0mm in a loop
-        positions = {node_id: 100 for node_id in nodes}
+    # Example: Move all actuators to 100mm, then 200mm, then 0mm in a loop
+"""
         try:
             while True:
                 for pos in [100, 200, 0]:
@@ -217,10 +171,7 @@ def main() -> None:
                     periodic_move(nodes, positions, interval=2.0)
         except KeyboardInterrupt:
             logger.info("Exiting on user request.")
-
-    finally:
-        network.disconnect()
-        logger.info("Disconnected from CAN network.")
+"""
 
 
 if __name__ == "__main__":
