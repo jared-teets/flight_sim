@@ -4,3 +4,10 @@ __pycache__/test_electrak.cpython-312-pytest-8.4.0.pyc
 .venv/
 flight_sim/__pycache__/
 flight_sim/tests/__pycache__/
+flight_sim/__pycache__/geometry.cpython-310.pyc
+flight_sim/__pycache__/Get_data.cpython-310.pyc
+flight_sim/__pycache__/Position.cpython-310.pyc
+flight_sim/__pycache__/Utilities.cpython-310.pyc
+flight_sim/__pycache__/Washout.cpython-310.pyc
+flight_sim/tests/__pycache__/test_electrak.cpython-312-pytest-8.4.0.pyc
+flight_sim/tests/__pycache__/test_mock_electrak.cpython-312-pytest-8.4.0.pyc
